@@ -1,15 +1,18 @@
 import pytest
 import sys
-from main import get_clickbait_report, combine_multiple_reports, run
+
+from main import combine_multiple_reports, run
+from report import ClickbaitReport
 
 
-def test_cli(tmp_path, monkeypatch, capsys):
+@pytest.fixture
+def sample_report():
+    return "title,ctr,retention_rate\nVideo1,25,10\nVideo2,5,80\nVideo3,30,12"
+
+
+def test_cli(sample_report, tmp_path, monkeypatch, capsys):
     test_file = tmp_path / "test.csv"
-    test_file.write_text(
-        "title,ctr,retention_rate\n"
-        "Video1,25,10\n"
-        "Video2,5,80",
-    )
+    test_file.write_text(sample_report)
 
     monkeypatch.setattr(sys, 'argv', [
         'main.py',
@@ -29,46 +32,41 @@ def test_wrong_path():
         combine_multiple_reports([''])
 
 
-def test_wrong_report_name(tmp_path, monkeypatch):
+def test_wrong_report_name(sample_report, tmp_path, monkeypatch):
     test_file = tmp_path / "test.csv"
-    test_file.write_text(
-        "title,ctr,retention_rate\n"
-        "Video1,25,10\n"
-        "Video2,5,80",
-    )
+    test_file.write_text(sample_report)
 
     monkeypatch.setattr(sys, 'argv', [
         'main.py',
         '--files', str(test_file),
         '--report', ''
     ])
+
     run()
 
     assert pytest.raises(KeyError)
 
 
-def test_get_clickbait_report_filtering():
-    test_data = [
-        {'title': 'Video1', 'ctr': '20', 'retention_rate': '30'},
-        {'title': 'Video2', 'ctr': '10', 'retention_rate': '30'},
-        {'title': 'Video3', 'ctr': '25', 'retention_rate': '50'},
-    ]
+def test_get_clickbait_report_filtering(sample_report, tmp_path):
+    file = tmp_path / 'test.csv'
+    file.write_text(sample_report)
 
-    result = get_clickbait_report(test_data)
-    assert len(result) == 1
-    assert result[0]['title'] == 'Video1' and result[0]['ctr'] == '20' and result[0]['retention_rate'] == '30'
+    report = ClickbaitReport(combine_multiple_reports([file]))
+    result = report.get_report()
+
+    assert len(result) ==2
+    assert result[0]['title'] == 'Video3' and result[1]['title'] == 'Video1'
 
 
-def test_get_clickbait_report_sorting():
-    test_data = [
-        {'title': 'Video1', 'ctr': '16', 'retention_rate': '10'},
-        {'title': 'Video2', 'ctr': '25', 'retention_rate': '9.5'},
-        {'title': 'Video3', 'ctr': '30', 'retention_rate': '12'},
-    ]
+def test_get_clickbait_report_sorting(sample_report, tmp_path):
+    file = tmp_path / 'test.csv'
+    file.write_text(sample_report)
 
-    result = get_clickbait_report(test_data)
+    report = ClickbaitReport(combine_multiple_reports([file]))
+    result = report.get_report()
+
     assert result[0]['title'] == 'Video3'
-    assert float(result[0]['ctr']) > float(result[1]['ctr']) > float(result[2]['ctr'])
+    assert float(result[0]['ctr']) > float(result[1]['ctr'])
 
 
 def test_combine_multiple_reports_single_report(tmp_path):

@@ -1,7 +1,12 @@
 import argparse
 import csv
-
+import logging
 from tabulate import tabulate
+from report import ClickbaitReport, REPORT_TYPES
+from ctr_logger import setup_logger
+
+setup_logger()
+logger = logging.getLogger(__name__)
 
 
 def combine_multiple_reports(file_paths: list[str]) -> list[dict]:
@@ -14,33 +19,9 @@ def combine_multiple_reports(file_paths: list[str]) -> list[dict]:
             reader = csv.DictReader(csvfile)  # using DictReader instead of reader helps to deal with headers easier
             for row in reader:
                 combined_report.append(row)
-            print(f'LOG: processed file #{index + 1}: {file_path}')
+            logger.info(f'processed file #{index + 1}: {file_path}')
     return combined_report
 
-
-def get_clickbait_report(report: list[dict]) -> list[dict]:
-    """
-    Only keeps TITLE, CTR>15% and RETENTION_RATE<40% columns.
-    Returns the report that meets needed requirements
-    """
-    print('LOG: report type: CLICKBAIT(title, ctr>15%, retention_rate<40%)')
-
-    retention_rate_percentage_max = 40
-    ctr_percentage_min = 15
-    keep_cols = ['title', 'ctr', 'retention_rate']
-
-    final_report = []
-    for row in report:
-        filtered_row = {col: row[col] for col in keep_cols}
-        if float(filtered_row['ctr']) > ctr_percentage_min and float(
-                filtered_row['retention_rate']) < retention_rate_percentage_max:
-            final_report.append(filtered_row)
-
-    return sorted(final_report, key=lambda sort_row: float(sort_row['ctr']), reverse=True)
-
-REPORT_TYPES = {
-    'clickbait': get_clickbait_report,
-}
 
 def run():
     parser = argparse.ArgumentParser(
@@ -53,17 +34,16 @@ def run():
     report_name = args.report
 
     try:
-        raw_combined_report = combine_multiple_reports(file_paths)  # first we combine the reports to not mess up sorting
-        try:
-            final_report = REPORT_TYPES[report_name](raw_combined_report)
-            if final_report:
-                print(tabulate(final_report, headers='keys', tablefmt='grid'))
-            else:
-                print('ERROR: could not generate a report')
-        except KeyError:
-            print('ERROR: there is no such REPORT TYPE')
+        report = REPORT_TYPES[report_name](combine_multiple_reports(file_paths))  # first we combine the reports to not mess up sorting
+        final_report = ClickbaitReport.get_report(report)
+        if final_report:
+            print(tabulate(final_report, headers='keys', tablefmt='grid'))
+        else:
+            logger.error('could not generate a report')
     except FileNotFoundError:
-        print('ERROR: could not find ONE OF or ALL the files listed')
+        logger.error('could not find ONE OF or ALL the files listed')
+    except KeyError:
+        logger.error('there is no such REPORT TYPE')
 
 
 if __name__ == '__main__':
